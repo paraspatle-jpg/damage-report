@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AssetCategory {
+  INDEX_ETF
+  SECTOR_ETF
+  STOCK
+  COMMODITY
+  BOND
+  CASH
+}
+
+model Holding {
+  id        String        @id @default(cuid())
+  symbol    String
+  name      String?
+  category  AssetCategory
+  quantity  Float
+  buyPrice  Float
+  notes     String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([symbol])
+}
+
+model AllocationTarget {
+  id            String        @id @default(cuid())
+  category      AssetCategory @unique
+  targetPercent Float
+  updatedAt     DateTime      @updatedAt
+}
+
+model JournalEntry {
+  id         String   @id @default(cuid())
+  symbol     String
+  action     String
+  reason     String
+  price      Float
+  quantity   Float
+  emotion    String?
+  createdAt  DateTime @default(now())
+  reviewedAt DateTime?
+  outcome    String?
+
+  @@index([symbol])
+}
+
+model SipPlan {
+  id          String        @id @default(cuid())
+  symbol      String
+  label       String
+  baseAmount  Float
+  category    AssetCategory @default(INDEX_ETF)
+  active      Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+enum TxnType {
+  EXPENSE
+  CREDIT
+  TRANSFER
+}
+
+enum CategoryType {
+  NEED
+  WANT
+  INVESTMENT
+  INCOME
+}
+
+model Category {
+  id           String        @id @default(cuid())
+  name         String        @unique
+  type         CategoryType
+  isFixed      Boolean       @default(false)
+  budget       Float?
+  createdAt    DateTime      @default(now())
+  transactions Transaction[]
+}
+
+model Transaction {
+  id          String    @id @default(cuid())
+  type        TxnType
+  amount      Float
+  categoryId  String
+  category    Category  @relation(fields: [categoryId], references: [id])
+  merchant    String?
+  note        String?
+  occurredAt  DateTime
+  source      String
+  rawText     String?
+  isRecurring Boolean   @default(false)
+  myShare     Float?
+  splitWith   String?
+  settledAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([occurredAt])
+  @@index([categoryId])
+  @@index([settledAt])
+}
+
+model MonthlySnapshot {
+  id          String   @id @default(cuid())
+  month       String   @unique
+  income      Float
+  expenses    Float
+  savingsRate Float
+  byCategory  Json
+  computedAt  DateTime @default(now())
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  refreshTokens RefreshToken[]
+  apiKeys       ApiKey[]
+}
+
+model RefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  replacedBy String?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  keyHash    String    @unique
+  keyPrefix  String
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
