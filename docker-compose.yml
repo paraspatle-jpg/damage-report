@@ -1,15 +1,32 @@
-# For local Docker runs. On Coolify, point the app at this repo's
-# Dockerfile directly and inject env vars in the Coolify UI — Coolify
-# does not need this compose file.
+# Coolify deployment — set this repo as a "Docker Compose" resource.
+# Coolify auto-injects SERVICE_FQDN_* and proxies to the exposed port.
 services:
   app:
     build:
       context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
-    env_file:
-      - .env
+    # Coolify magic var: replaced with the public FQDN it assigns.
+    # Remove this block if you set the domain manually in the Coolify UI.
     environment:
-      NODE_ENV: production
-      PORT: 6001
-    ports:
-      - "${APP_PORT:-6001}:6001"
+      - SERVICE_FQDN_APP_6001
+      - NODE_ENV=production
+      - PORT=6001
+      - HOSTNAME=0.0.0.0
+      # ── App secrets — set these in the Coolify "Environment Variables" UI ──
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_ALLOWED_CHAT_ID=${TELEGRAM_ALLOWED_CHAT_ID}
+      - SEED_USER_EMAIL=${SEED_USER_EMAIL:-}
+      - SEED_USER_PASSWORD=${SEED_USER_PASSWORD:-}
+    expose:
+      - "6001"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:6001/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
