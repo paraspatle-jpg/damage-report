@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import { FunctionCallingConfigMode, GoogleGenAI, Type } from "@google/genai";
 
 export type ParsedTxn = {
   type: "EXPENSE" | "CREDIT";
@@ -15,8 +15,8 @@ export type ParsedTxn = {
 
 type CategoryHint = { name: string; type: string };
 
-const client = new OpenAI();
-const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 
 export async function parseExpenseMessage(
   text: string,
@@ -38,46 +38,48 @@ Rules:
 - isRecurring=true for clear subscription/monthly patterns (netflix, spotify, rent, emi, "monthly", "subscription").
 - confidence ∈ [0,1]: how sure you are. Drop below 0.5 if the amount, category, or intent is genuinely unclear.`;
 
-  const response = await client.chat.completions.create({
+  const response = await ai.models.generateContent({
     model: MODEL,
-    max_tokens: 512,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: `Today: ${todayIso}. Message: ${text}` },
-    ],
-    tools: [
-      {
-        type: "function",
-        function: {
-          name: "log_transaction",
-          description: "Log a single personal-finance transaction parsed from a natural-language message.",
-          parameters: {
-            type: "object",
-            properties: {
-              type: { type: "string", enum: ["EXPENSE", "CREDIT"] },
-              amount: { type: "number", description: "Total amount in INR (positive)." },
-              categoryName: { type: "string", enum: allCats },
-              merchant: { type: "string", description: "Merchant or source (Swiggy, HDFC Rent, etc.). Optional." },
-              note: { type: "string", description: "Short free-text note. Optional." },
-              occurredAt: { type: "string", description: "YYYY-MM-DD date the transaction happened." },
-              isRecurring: { type: "boolean" },
-              myShare: { type: "number", description: "User's portion for split expenses, in INR." },
-              splitWith: { type: "string", description: "Comma-separated friend names, if split." },
-              confidence: { type: "number", description: "0.0–1.0 confidence in this parse." },
+    contents: [{ role: "user", parts: [{ text: `Today: ${todayIso}. Message: ${text}` }] }],
+    config: {
+      systemInstruction: system,
+      maxOutputTokens: 512,
+      tools: [
+        {
+          functionDeclarations: [
+            {
+              name: "log_transaction",
+              description: "Log a single personal-finance transaction parsed from a natural-language message.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  type: { type: Type.STRING, enum: ["EXPENSE", "CREDIT"] },
+                  amount: { type: Type.NUMBER, description: "Total amount in INR (positive)." },
+                  categoryName: { type: Type.STRING, enum: allCats },
+                  merchant: { type: Type.STRING, description: "Merchant or source (Swiggy, HDFC Rent, etc.). Optional." },
+                  note: { type: Type.STRING, description: "Short free-text note. Optional." },
+                  occurredAt: { type: Type.STRING, description: "YYYY-MM-DD date the transaction happened." },
+                  isRecurring: { type: Type.BOOLEAN },
+                  myShare: { type: Type.NUMBER, description: "User's portion for split expenses, in INR." },
+                  splitWith: { type: Type.STRING, description: "Comma-separated friend names, if split." },
+                  confidence: { type: Type.NUMBER, description: "0.0–1.0 confidence in this parse." },
+                },
+                required: ["type", "amount", "categoryName", "occurredAt", "confidence"],
+              },
             },
-            required: ["type", "amount", "categoryName", "occurredAt", "confidence"],
-          },
+          ],
+        },
+      ],
+      toolConfig: {
+        functionCallingConfig: {
+          mode: FunctionCallingConfigMode.ANY,
+          allowedFunctionNames: ["log_transaction"],
         },
       },
-    ],
-    tool_choice: { type: "function", function: { name: "log_transaction" } },
+    },
   });
 
-  const call = response.choices[0]?.message?.tool_calls?.[0];
-  if (!call || call.type !== "function") return null;
-  try {
-    return JSON.parse(call.function.arguments) as ParsedTxn;
-  } catch {
-    return null;
-  }
+  const call = response.functionCalls?.[0];
+  if (!call || call.name !== "log_transaction" || !call.args) return null;
+  return call.args as unknown as ParsedTxn;
 }

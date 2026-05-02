@@ -32,8 +32,8 @@ ENV HOSTNAME=0.0.0.0
 # can override them. Leave blank in the image; inject real values in Coolify.
 ENV DATABASE_URL=""
 ENV JWT_SECRET=""
-ENV OPENAI_API_KEY=""
-ENV OPENAI_MODEL="gpt-4o-mini"
+ENV GEMINI_API_KEY=""
+ENV GEMINI_MODEL="gemini-2.0-flash"
 ENV TELEGRAM_BOT_TOKEN=""
 ENV TELEGRAM_ALLOWED_CHAT_ID=""
 ENV SEED_USER_EMAIL=""
