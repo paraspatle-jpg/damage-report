@@ -22,9 +22,22 @@ RUN npm run build
 # ── runtime ─────────────────────────────────────────────────────────
 FROM base AS runner
 WORKDIR /app
+
+# Static runtime config
 ENV NODE_ENV=production
-ENV PORT=3001
+ENV PORT=6001
 ENV HOSTNAME=0.0.0.0
+
+# Runtime env vars — declared here so Coolify (or `docker run -e …`)
+# can override them. Leave blank in the image; inject real values in Coolify.
+ENV DATABASE_URL=""
+ENV JWT_SECRET=""
+ENV OPENAI_API_KEY=""
+ENV OPENAI_MODEL="gpt-4o-mini"
+ENV TELEGRAM_BOT_TOKEN=""
+ENV TELEGRAM_ALLOWED_CHAT_ID=""
+ENV SEED_USER_EMAIL=""
+ENV SEED_USER_PASSWORD=""
 
 RUN groupadd --system --gid 1001 nodejs \
     && useradd --system --uid 1001 --gid nodejs nextjs
@@ -38,6 +51,6 @@ COPY --chown=nextjs:nodejs docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 USER nextjs
-EXPOSE 3000
+EXPOSE 6001
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["npm", "run", "start"]
+CMD ["npm", "run", "start", "--", "-p", "6001"]

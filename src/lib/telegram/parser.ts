@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 
 export type ParsedTxn = {
   type: "EXPENSE" | "CREDIT";
@@ -15,7 +15,8 @@ export type ParsedTxn = {
 
 type CategoryHint = { name: string; type: string };
 
-const client = new Anthropic();
+const client = new OpenAI();
+const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 export async function parseExpenseMessage(
   text: string,
@@ -37,37 +38,46 @@ Rules:
 - isRecurring=true for clear subscription/monthly patterns (netflix, spotify, rent, emi, "monthly", "subscription").
 - confidence ∈ [0,1]: how sure you are. Drop below 0.5 if the amount, category, or intent is genuinely unclear.`;
 
-  const response = await client.messages.create({
-    model: "claude-haiku-4-5",
+  const response = await client.chat.completions.create({
+    model: MODEL,
     max_tokens: 512,
-    system,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: `Today: ${todayIso}. Message: ${text}` },
+    ],
     tools: [
       {
-        name: "log_transaction",
-        description: "Log a single personal-finance transaction parsed from a natural-language message.",
-        input_schema: {
-          type: "object",
-          properties: {
-            type: { type: "string", enum: ["EXPENSE", "CREDIT"] },
-            amount: { type: "number", description: "Total amount in INR (positive)." },
-            categoryName: { type: "string", enum: allCats },
-            merchant: { type: "string", description: "Merchant or source (Swiggy, HDFC Rent, etc.). Optional." },
-            note: { type: "string", description: "Short free-text note. Optional." },
-            occurredAt: { type: "string", description: "YYYY-MM-DD date the transaction happened." },
-            isRecurring: { type: "boolean" },
-            myShare: { type: "number", description: "User's portion for split expenses, in INR." },
-            splitWith: { type: "string", description: "Comma-separated friend names, if split." },
-            confidence: { type: "number", description: "0.0–1.0 confidence in this parse." },
+        type: "function",
+        function: {
+          name: "log_transaction",
+          description: "Log a single personal-finance transaction parsed from a natural-language message.",
+          parameters: {
+            type: "object",
+            properties: {
+              type: { type: "string", enum: ["EXPENSE", "CREDIT"] },
+              amount: { type: "number", description: "Total amount in INR (positive)." },
+              categoryName: { type: "string", enum: allCats },
+              merchant: { type: "string", description: "Merchant or source (Swiggy, HDFC Rent, etc.). Optional." },
+              note: { type: "string", description: "Short free-text note. Optional." },
+              occurredAt: { type: "string", description: "YYYY-MM-DD date the transaction happened." },
+              isRecurring: { type: "boolean" },
+              myShare: { type: "number", description: "User's portion for split expenses, in INR." },
+              splitWith: { type: "string", description: "Comma-separated friend names, if split." },
+              confidence: { type: "number", description: "0.0–1.0 confidence in this parse." },
+            },
+            required: ["type", "amount", "categoryName", "occurredAt", "confidence"],
           },
-          required: ["type", "amount", "categoryName", "occurredAt", "confidence"],
         },
       },
     ],
-    tool_choice: { type: "tool", name: "log_transaction" },
-    messages: [{ role: "user", content: `Today: ${todayIso}. Message: ${text}` }],
+    tool_choice: { type: "function", function: { name: "log_transaction" } },
   });
 
-  const toolUse = response.content.find((b) => b.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use") return null;
-  return toolUse.input as ParsedTxn;
+  const call = response.choices[0]?.message?.tool_calls?.[0];
+  if (!call || call.type !== "function") return null;
+  try {
+    return JSON.parse(call.function.arguments) as ParsedTxn;
+  } catch {
+    return null;
+  }
 }

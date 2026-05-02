@@ -13,11 +13,11 @@
     "db:reset": "prisma db push --force-reset && npm run db:seed"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.90.0",
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^3.0.3",
     "jose": "^6.2.2",
     "next": "^16.2.4",
+    "openai": "^6.35.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "yahoo-finance2": "^3.14.0",
